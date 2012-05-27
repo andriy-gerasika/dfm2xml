@@ -13,7 +13,8 @@ implementation
 uses
   System.RTLConsts,
   System.TypInfo,
-  System.SysUtils;
+  System.SysUtils,
+  System.StrUtils;
 
 { Binary to xml conversion }
 
@@ -29,7 +30,7 @@ var
 
   procedure WriteIndent;
   const
-    Blanks: array[0..1] of AnsiChar = (#32, #32); //'  ';
+    Blanks: array[0..0] of AnsiChar = (#9); //'<tab>';
   var
     I: Integer;
   begin
@@ -75,27 +76,31 @@ var
     ObjectName := Reader.ReadStr;
     WriteIndent;
     if ffInherited in Flags then
-      WriteStr('inherited ')
+      WriteStr('<object instance="inherited"')
     else if ffInline in Flags then
-      WriteStr('inline ')
+      WriteStr('<object instance="inline"')
     else
-      WriteStr('object ');
+      WriteStr('<object');
     if ObjectName <> '' then
     begin
+      WriteStr(' name="');
       WriteUTF8Str(ObjectName);
-      WriteStr(': ');
+      WriteStr('"');
     end;
+    WriteStr(' class="');
     WriteUTF8Str(ClassName);
+    WriteStr('"');
     if ffChildPos in Flags then
     begin
-      WriteStr(' [');
+      WriteStr(' index="');
       WriteStr(IntToStr(Position));
-      WriteStr(']');
+      WriteStr('"');
     end;
 
     if ObjectName = '' then
       ObjectName := ClassName;  // save for error reporting
 
+    WriteStr('>');
     WriteStr(sLineBreak);
   end;
 
@@ -166,96 +171,20 @@ var
       vaWString, vaUTF8String:
         begin
           W := Reader.ReadWideString;
-          L := Length(W);
-          if L = 0 then WriteStr('''''') else
-          begin
-            I := 1;
-            Inc(NestingLevel);
-            try
-              if L > LineLength then NewLine;
-              K := I;
-              repeat
-                LineBreak := False;
-                if (W[I] >= ' ') and (W[I] <> '''') and (Ord(W[i]) <= 127) then
-                begin
-                  J := I;
-                  repeat
-                    Inc(I)
-                  until (I > L) or (W[I] < ' ') or (W[I] = '''') or
-                    ((I - K) >= LineLength) or (Ord(W[i]) > 127);
-                  if ((I - K) >= LineLength) then LineBreak := True;
-                  WriteStr('''');
-                  while J < I do
-                  begin
-                    WriteStr(AnsiChar(W[J]));
-                    Inc(J);
-                  end;
-                  WriteStr('''');
-                end else
-                begin
-                  WriteStr('#');
-                  WriteStr(IntToStr(Ord(W[I])));
-                  Inc(I);
-                  if ((I - K) >= LineLength) then LineBreak := True;
-                end;
-                if LineBreak and (I <= L) then
-                begin
-                  WriteStr(' +');
-                  NewLine;
-                  K := I;
-                end;
-              until I > L;
-            finally
-              Dec(NestingLevel);
-            end;
-          end;
+          W := ReplaceStr(W, '&', '&amp;');
+          W := ReplaceStr(W, '"', '&quot;');
+          W := ReplaceStr(W, '<', '&lt;');
+          W := ReplaceStr(W, '>', '&gt;');
+          WriteUTF8Str(W);
         end;
       vaString, vaLString:
         begin
           S := AnsiString(Reader.ReadString);
-          L := Length(S);
-          if L = 0 then WriteStr('''''') else
-          begin
-            I := 1;
-            Inc(NestingLevel);
-            try
-              if L > LineLength then NewLine;
-              K := I;
-              repeat
-                LineBreak := False;
-                if (S[I] >= ' ') and (S[I] <> '''') then
-                begin
-                  J := I;
-                  repeat
-                    Inc(I)
-                  until (I > L) or (S[I] < ' ') or (S[I] = '''') or
-                    ((I - K) >= LineLength);
-                  if ((I - K) >= LineLength) then
-                  begin
-                    LIneBreak := True;
-                    if ByteType(S, I) = mbTrailByte then Dec(I);
-                  end;
-                  WriteStr('''');
-                  Writer.Write(S[J], I - J);
-                  WriteStr('''');
-                end else
-                begin
-                  WriteStr('#');
-                  WriteStr(IntToStr(Ord(S[I])));
-                  Inc(I);
-                  if ((I - K) >= LineLength) then LineBreak := True;
-                end;
-                if LineBreak and (I <= L) then
-                begin
-                  WriteStr(' +');
-                  NewLine;
-                  K := I;
-                end;
-              until I > L;
-            finally
-              Dec(NestingLevel);
-            end;
-          end;
+          S := AnsiReplaceStr(S, '&', '&amp;');
+          S := AnsiReplaceStr(S, '"', '&quot;');
+          S := AnsiReplaceStr(S, '<', '&lt;');
+          S := AnsiReplaceStr(S, '>', '&gt;');
+          WriteStr(S);
         end;
       vaIdent, vaFalse, vaTrue, vaNil, vaNull:
         WriteUTF8Str(Reader.ReadIdent);
@@ -279,7 +208,7 @@ var
       vaCollection:
         begin
           Reader.ReadValue;
-          WriteStr('<');
+          ///WriteStr('<');
           Inc(NestingLevel);
           while not Reader.EndOfList do
           begin
@@ -303,7 +232,7 @@ var
           end;
           Reader.ReadListEnd;
           Dec(NestingLevel);
-          WriteStr('>');
+          ///WriteStr('>');
         end;
       vaInt64:
         WriteStr(IntToStr(Reader.ReadInt64));
@@ -317,9 +246,11 @@ var
   begin
     WriteIndent;
     PropName := Reader.ReadStr;  // save for error reporting
+    WriteStr('<property name="');
     WriteUTF8Str(PropName);
-    WriteStr(' = ');
+    WriteStr('" value="');
     ConvertValue;
+    WriteStr('"/>');
     WriteStr(sLineBreak);
   end;
 
@@ -335,7 +266,7 @@ var
     Reader.ReadListEnd;
     Dec(NestingLevel);
     WriteIndent;
-    WriteStr('end' + sLineBreak);
+    WriteStr('</object>' + sLineBreak);
   end;
 
 begin
