@@ -43,7 +43,9 @@ end;
 
 var
   OutputStream: TStream;
+  OutputWriter: TStreamWriter;
   Param: String;
+  FileNames: TStringList;
   FileName: String;
   i: Integer;
 begin
@@ -52,30 +54,44 @@ begin
     Writeln('usage: dfm2xml (folder|file.dfm)+');
   end else
   begin
-    Writeln('<xml>');
-    Flush(Output);
     OutputStream := THandleStream.Create(GetStdHandle(STD_OUTPUT_HANDLE));
     try
+    OutputWriter := TStreamWriter.Create(OutputStream);
+    try
+      OutputWriter.Write('<xml>' + sLineBreak);
+      FileNames := TStringList.Create;
+      try
       for i := 1 to ParamCount do
       begin
         Param := ParamStr(i);
-        if TFile.Exists(Param) then
-        begin
-          ObjectBinaryToXml(Param, OutputStream);
-        end else
-        if TDirectory.Exists(Param) then
+        if DirectoryExists(Param) then
         begin
           for FileName in TDirectory.GetFiles(Param, '*.dfm', TSearchOption.soAllDirectories) do
           begin
-            ObjectBinaryToXml(FileName, OutputStream);
+            FileNames.Add(FileName)
           end;
+        end else
+        if FileExists(FileName) then
+        begin
+          FileNames.Add(Param);
         end;
       end;
+      FileNames.Sort;
+      for FileName in FileNames do
+      begin
+        OutputWriter.Write('<unit name="' + ChangeFileExt(ExtractFileName(FileName), '') + '">' + sLineBreak);
+        ObjectBinaryToXml(FileName, OutputStream);
+        OutputWriter.Write('</unit>' + sLineBreak);
+      end;
+      finally
+        FileNames.Sort;
+      end;
+      OutputWriter.Write('</xml>');
+    finally
+      OutputWriter.Free;
+    end;
     finally
       OutputStream.Free;
     end;
-    Writeln('</xml>');
-    Flush(Output);
   end;
-
 end.
